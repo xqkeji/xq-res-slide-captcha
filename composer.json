@@ -1,0 +1,51 @@
+{
+    "name": "xqkeji/xq-res-slide-captcha",
+    "description": "滑动拼图验证码的PHP的Composer包。",
+    "type": "library",
+    "license": "AGPL-3.0-only",
+    "autoload": {
+        "psr-4": {
+            "xqkeji\\composer\\xq-slide-captcha\\": ""
+        }
+    },
+    "authors": [
+        {
+            "name": "xqkeji.cn"
+        }
+    ],
+    "extra": {
+        "post-package-install":[
+            {
+                "cmd":["xqkeji\\composer\\Asset","copyDirs"],
+                "param":[{
+                    "vendor/xqkeji/xq-res-slide-captcha/src/":"www/asset/xq-slide-captcha/"
+                }]
+            }
+        ],
+        "post-package-update":[
+            {
+                "cmd":["xqkeji\\composer\\Asset","rmDirs"],
+                "param":[{
+                    "www/asset/xq-slide-captcha/":"www/asset/xq-slide-captcha/"
+                }]
+            },
+            {
+                "cmd":["xqkeji\\composer\\Asset","copyDirs"],
+                "param":[{
+                    "vendor/xqkeji/xq-res-slide-captcha/src/":"www/asset/xq-slide-captcha/"
+                }]
+            }
+        ],
+        "post-package-uninstall":[
+            {
+                "cmd":["xqkeji\\composer\\Asset","rmDirs"],
+                "param":[{
+                    "www/asset/xq-slide-captcha/":"www/asset/xq-slide-captcha/"
+                }]
+            }
+        ]
+    },
+    "require": {
+        "xqkeji/composer":"^1.0"
+    }
+}
