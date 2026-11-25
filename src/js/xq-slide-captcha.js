@@ -1389,13 +1389,31 @@
     }
     async load() {
       const body = await this.transport.request("GET", this.options.dataUrl);
-      const data = JSON.parse(body);
+      const parsed = JSON.parse(body);
+      const data = unwrap(parsed);
       if (!isValidData(data, this.expectedType)) {
         throw new Error("\u9A8C\u8BC1\u7801\u6570\u636E\u683C\u5F0F\u4E0D\u6B63\u786E");
       }
       return data;
     }
   };
+  function unwrap(value) {
+    if (typeof value !== "object" || value === null) {
+      return value;
+    }
+    const root = value;
+    const payload = root.data;
+    if (typeof payload !== "object" || payload === null || typeof root.image_base64 === "string") {
+      return value;
+    }
+    if (root.code !== 200 && root.success !== true) {
+      return value;
+    }
+    return {
+      ...payload,
+      success: true
+    };
+  }
   function isValidData(data, expectedType) {
     return typeof data === "object" && data !== null && typeof data.success === "boolean" && (data.type === expectedType || data.type === null) && typeof data.image_base64 === "string";
   }
@@ -1574,11 +1592,13 @@
         message: fallbackMessage
       };
     }
-    const data = parsed;
+    const root = parsed;
+    const payload = typeof root.data === "object" && root.data !== null && !("token" in root) && !("message" in root) ? root.data : root;
+    const success = payload.success === true || root.success === true || payload.code === 200 || root.code === 200 || payload.status === "ok" || root.status === "ok" || payload.status === "success" || root.status === "success";
     return {
-      success: data.success === true || data.code === 200 || data.status === "ok" || data.status === "success",
-      token: text(data.token),
-      message: text(data.message) ?? text(data.error) ?? fallbackMessage
+      success,
+      token: text(payload.token),
+      message: text(payload.message) ?? text(payload.error) ?? text(root.message) ?? fallbackMessage
     };
   }
   function failureMessage(error, fallback) {
@@ -2110,6 +2130,14 @@
       this.behaviour.prepareRefresh();
       this.dataClient.load().then((data) => this.behaviour.applyData(data)).catch((error) => {
         console.error(`${this.hooks.logPrefix}: \u83B7\u53D6\u9A8C\u8BC1\u7801\u5931\u8D25`, error);
+        this.behaviour.onDataError?.();
+        const reason = error instanceof Error ? error.message : this.options.failText;
+        this.message.show(reason, false);
+        this.state.busy = false;
+        this.state.passed = false;
+        this.state.token = null;
+        this.hiddenInput.block();
+        this.callbacks.emit("fail", reason);
       });
     }
     reset() {
@@ -3064,6 +3092,9 @@
         console.error("xq-slide-captcha: \u9A8C\u8BC1\u7801\u56FE\u7247\u52A0\u8F7D\u5931\u8D25", error);
         this.loading.fail();
       }
+    }
+    onDataError() {
+      this.loading.fail();
     }
     markFailures() {
     }
