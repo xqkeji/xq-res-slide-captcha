@@ -162,7 +162,7 @@ captcha
 ```ts
 interface Transport {
   /** 2xx 时 resolve 响应文本，其余情况 reject HttpError。 */
-  request(method: 'GET' | 'POST', url: string, data?: Record<string, string>): Promise<string>;
+  request(method: 'GET' | 'POST', url: string, data?: Record<string, unknown>): Promise<string>;
 }
 ```
 
@@ -189,7 +189,7 @@ const backend: Transport = USE_REAL_BACKEND
   : new MockBackend();
 ```
 
-内置 `FetchTransport` 用 `application/x-www-form-urlencoded` 提交、`credentials: 'same-origin'` 带上同源 Cookie（答案存在 PHP 会话里），超时用 `AbortController` 中断。`HttpError.status` 沿用上游语义：`-1` 超时、`0` 网络错误、其余为 HTTP 状态码。
+内置 `FetchTransport`：GET 把参数拼到 URL 查询串，POST 用 `application/json` 提交 JSON 对象（字段见下方接口契约）；`credentials: 'same-origin'` 带上同源 Cookie（答案存在 PHP 会话里），超时用 `AbortController` 中断。`HttpError.status` 沿用上游语义：`-1` 超时、`0` 网络错误、其余为 HTTP 状态码。
 
 ## 实例 API
 
@@ -227,7 +227,7 @@ const backend: Transport = USE_REAL_BACKEND
 
 查询参数：`t`（时间戳）、`_s`（随机串）用于破坏缓存。
 
-响应体必须是 JSON，且 `success` 为 boolean、`type` 为 `slide`/`null`、`image_base64` 为 string，否则抛「验证码数据格式不正确」。`success: false` 时抛 `message`。
+响应体必须是 JSON，且 `success` 为 boolean、`type` 为 `slide`/`null`、`image_base64` 为 string，否则抛「验证码数据格式不正确」。`success: false` 时抛 `message`。同时兼容 `{code: 200, data: {...}}` 或 `{success: true, data: {...}}` 包裹形式，组件会解包并把 `success` 视为 `true`。
 
 | 键 | 说明 |
 | --- | --- |
@@ -240,19 +240,21 @@ const backend: Transport = USE_REAL_BACKEND
 
 ### POST `checkUrl`
 
-| 场景 | 表单字段 |
-| --- | --- |
-| 滑动检验 | `captcha_r`（偏移量，**图片像素**）+ `slide_track`（JSON 数组） |
-| 二次验证 | `token`（由宿主表单提交，不经组件） |
+请求体为 JSON（`Content-Type: application/json`）。
 
-轨迹点为 `{x, y, t}`，坐标是图片像素，`t` 为相对拖动起点的毫秒数。CSS 像素到图片像素的换算由组件按画布实际显示宽度完成，宿主无需关心缩放与 DPR。
+| 场景 | JSON 字段 |
+| --- | --- |
+| 滑动检验 | `captcha_r`：偏移量数值（**图片像素**）；`slide_track`：`{x, y, t}` 数组 |
+| 二次验证 | `token`：字符串（由宿主表单提交，不经组件） |
+
+轨迹点为 `{x, y, t}`，坐标是图片像素，`t` 为相对拖动起点的毫秒数。组件直接发送数值与数组，不再把 JSON 字符串塞进表单字段。CSS 像素到图片像素的换算由组件按画布实际显示宽度完成，宿主无需关心缩放与 DPR。
 
 两种验证模式（与 `xq-app-admin` 后端口径一致）：
 
 - **dual**：首次通过签发一次性令牌，答案立即作废；宿主表单提交时带 `token` 二次校验，令牌用过即毁。
 - **backend_only**：不签发令牌，首次通过后凭会话里的已验证状态对后续表单提交幂等放行。
 
-响应规范化为 `{success, token, message}`。除标准形式外还兼容老后端：`code === 200`、`status === 'ok' | 'success'`，以及纯文本 `ok` / `"ok"` / `true` / `1`。`message` 缺失时依次退回 `error` 字段、`failText`。
+响应规范化为 `{success, token, message}`。除标准形式外还兼容老后端：`code === 200`、`status === 'ok' | 'success'`，以及纯文本 `ok` / `"ok"` / `true` / `1`；也兼容把字段放在 `data` 对象里的包裹形式（根级没有 `token` / `message` 时自动读取）。`message` 缺失时依次退回 `error` 字段、`failText`。
 
 ### 宿主表单复位契约
 
@@ -346,7 +348,7 @@ html/                          演示页产物（npm run html，不发布）
 - 修复上游两块画布横向错位 1px 的问题（写死像素宽度 + `margin: auto` 溢出退化 vs `left: 50%` 居中基准不一致）：两块画布同处一个相对定位容器，宽度流式，逐像素重合。
 - 修复上游重复 `init()` 叠加监听导致一次拖动提交两回的问题：先解绑再绑，并提供 `dispose()` 释放监听、计时器与弹窗 DOM（上游没有任何销毁入口）。
 - `backend_only` 模式下无令牌时移除隐藏输入框，避免向表单提交无效值。
-- 触发元素统一为 `.xq-captcha`，复位事件统一为 `xq.form.error`；`captcha_r` / `slide_track` 参数名与老后端响应兼容；保留滑块键盘操作与 ARIA 语义。
+- 触发元素统一为 `.xq-captcha`，复位事件统一为 `xq.form.error`；`captcha_r` / `slide_track` 参数名保持不变，值改为 JSON 中的数值与数组；保留滑块键盘操作与 ARIA 语义。
 - **UI 完全重写为 Bootstrap 5.3**：弹窗用 Bootstrap Modal 组件与 `data-bs-theme`；删除了原先的 `--xq-captcha-*` 色板，滑块抠图换成独立的窗口平均亮度差分算法，内部选择器全部改到 `xq-captcha-*` 命名空间。
 
 ## 共享核心 xq-captcha-core
